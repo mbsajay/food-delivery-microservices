@@ -1,0 +1,77 @@
+# --- Maven ---
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# --- Gradle (in case any module switches) ---
+.gradle/
+build/
+
+# --- IDEs ---
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.project
+.classpath
+.settings/
+.factorypath
+out/
+bin/
+
+# --- Assistant / tooling config ---
+.claude/
+CLAUDE.md
+.cursor/
+.aider*
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Environment / secrets ---
+.env
+.env.local
+*.pem
+*.key
+secrets/
+
+# --- Spring / app ---
+*.pid
+application-local.yml
+application-local.properties
+
+# --- Docker ---
+.docker/
+
+# --- Coverage ---
+*.exec
+jacoco.exec
+coverage/
+
+# --- Terraform ---
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# --- Misc ---
+HELP.md
+.flattened-pom.xml
+
+# --- Local-only utility scripts (kept untracked) ---
+docs/_*.py
+docs/~$*.docx
