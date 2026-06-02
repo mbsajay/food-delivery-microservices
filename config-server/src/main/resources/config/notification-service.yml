@@ -1,2 +1,16 @@
 server:
   port: 8006
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+foodly:
+  security:
+    jwt:
+      public-key: ${JWT_PUBLIC_KEY:MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArFAHWu/qwG5+L4M8rBH/ccVg7UdmINK8Zt90zd1YjDvqvEK2DHbXvgNkWe/zX+wXiTUfAmEZRpA+YVGrbqFwaUgGz7LLPWvi5pICNGs/UiwSbaxWDgaO99wXG4yt9l7z0AOvQgxmL62NlM7ACldlEmkxnbkbZjxPccl5EHNaf4b9sWRyS/2Io4g8elkK+O2dwz44cg8LW9P1QBEKP0D6o2Pong93j/8Yh7IhyBXfC0FwdcebuKv4WSQaC3X6WvZ1tAsbme00EXdGZS1BEfP1uADn8OH+fI36FN/jecewab7BzhgjqF0cCCVwHNwlfTFYB/OznA/fUwds3GG5dbvq/wIDAQAB}
