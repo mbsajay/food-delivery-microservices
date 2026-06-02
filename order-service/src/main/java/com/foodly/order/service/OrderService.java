@@ -56,7 +56,7 @@ public class OrderService {
         Order saved = orders.save(order);
 
         events.publish(OrderPlacedEvent.builder()
-                .aggregateId(saved.getId().toString())
+                .orderId(saved.getId().toString())
                 .customerId(customerId.toString())
                 .restaurantId(saved.getRestaurantId().toString())
                 .totalAmount(total)
