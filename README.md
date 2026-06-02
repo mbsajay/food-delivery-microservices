@@ -97,32 +97,34 @@ All components run as Docker containers on the local machine. There is no cloud 
 
 ```
 Customer → Gateway → order-service
-                       │
-                       │ POST /orders
+                       │ POST /api/orders   (Bearer JWT)
                        ▼
                      persist order (status=PENDING_PAYMENT)
-                       │
-                       │ produces  → kafka: order.placed
+                       │ produces → kafka: order.placed
                        ▼
                   payment-service consumes order.placed
+                       │ creates Payment, charges the (simulated) gateway synchronously
+                       │ produces → kafka: payment.completed   (or payment.failed)
+                       ├───────────────────────────────┐
+                       ▼                                ▼
+       order-service consumes payment.completed   delivery-service consumes payment.completed
+              marks order CONFIRMED                    assigns courier, persists trip
+                                                       produces → kafka: order.dispatched
+                       ┌───────────────────────────────┘
+                       ▼
+              order-service consumes order.dispatched → marks order OUT_FOR_DELIVERY
                        │
-                       │ creates PaymentIntent, calls gateway API (mock)
-                       │
+   courier completes trip:  POST /api/delivery/order/{id}/complete
+                       │ delivery-service produces → kafka: order.delivered
                        ▼
-                  mock gateway → webhook → /payments/webhook
-                       │
-                       │ verifies signature, marks payment SUCCESS
-                       │ produces → kafka: payment.completed
-                       ▼
-              order-service consumes payment.completed
-                       │ marks order CONFIRMED
-                       ▼
-              delivery-service consumes order.confirmed
-                       │ assigns agent, creates trip
-                       │ produces → kafka: order.dispatched
-                       ▼
-              notification-service consumes events → logs / sends email
+              order-service consumes order.delivered → marks order DELIVERED
+
+   notification-service consumes every event above → records a notification (in-memory + log)
 ```
+
+> Note: the payment gateway is a deterministic in-process simulation (any positive amount
+> succeeds), so the charge resolves synchronously rather than via an inbound webhook. The
+> reconciliation job (§5.2) is the asynchronous safety net behind it.
 
 ### 5.2 Reconciliation Job
 
@@ -141,64 +143,188 @@ A scheduled job in `payment-service` runs every 15 minutes:
 | Git & version control                     | This repo, conventional commits, feature branches                  |
 | Spring Framework & APIs                   | Every service exposes REST controllers                             |
 | MVC + Requests                            | Controller / Service / Repository layering in every module         |
-| Calling 3rd-party APIs                    | `payment-service` → mock payment gateway                           |
-| RestTemplate & Exception handling         | Inter-service sync calls, global `@ControllerAdvice` per service   |
+| Calling 3rd-party APIs                    | `payment-service` → simulated payment gateway                      |
+| Exception handling                        | Global `@RestControllerAdvice` per service → shared `ApiResponse`  |
 | Spring Data JPA                           | Every persistence module                                           |
-| UUIDs & Inheritance                       | All primary keys are UUIDs; menu items use `JOINED` inheritance    |
-| JPA Queries & Repositories                | Derived queries + `@Query` + Specifications in restaurant-service  |
-| Fetch types & modes                       | Lazy on collections, eager on small refs — documented per entity   |
-| Unit Testing & Mocking                    | JUnit 5 + Mockito across services; Testcontainers for repo tests   |
-| Authentication / OAuth2 / JWT             | `user-service` issues JWT; gateway + services validate             |
-| Search: Paging & Sorting                  | `/restaurants/search` with `Pageable` & filters                    |
+| UUIDs                                     | All primary keys are UUIDs (`gen_random_uuid()` + Hibernate)       |
+| JPA Queries & Repositories                | Derived queries (`findByActiveTrueAndCity…`) across services       |
+| Fetch types & modes                       | Lazy on `@ManyToOne`/collections (menu items, order items)         |
+| Unit Testing & Mocking                    | JUnit 5 + Mockito; Testcontainers Postgres IT in user-service      |
+| Authentication / OAuth2 / JWT             | `user-service` issues RS256 JWT; every service validates as RS     |
+| Search: Paging & Sorting                  | `GET /api/restaurants?city=&q=&page=&size=` with `Pageable`        |
 | Payment microservice                      | `payment-service`                                                  |
-| Webhooks + reconciliation                 | `payment-service` + scheduled reconciler                           |
+| Reconciliation                            | `payment-service` scheduled reconciler + `payment_recon_log`       |
 | Kafka async comms                         | All inter-service events                                           |
 | Spring Cloud                              | Gateway, Eureka, Config Server                                     |
 | Docker                                    | Dockerfile per service + root `docker-compose.yml`                 |
 
 ---
 
-## 7. Local Development
+## 7. Running the Application
 
-### Prerequisites
-- JDK 17, Maven 3.9+
-- Docker Desktop
-- (Optional) Postman / curl for API testing
+### 7.1 Prerequisites
 
-### Quick start (everything via Docker)
+| Tool | Version | Notes |
+|------|---------|-------|
+| JDK | 17 | `java -version` should report 17.x |
+| Maven | 3.9+ | or use the IDE's bundled Maven |
+| Docker Desktop | latest | provides Postgres, Kafka, Redis (and the full stack in Option A) |
+| `curl` + `jq` | any | for the demo walkthrough below (optional) |
+
+### 7.2 Service & port map
+
+| Component | URL | | Component | URL |
+|---|---|---|---|---|
+| api-gateway | http://localhost:8080 | | payment-service | http://localhost:8004 |
+| discovery (Eureka) | http://localhost:8761 | | delivery-service | http://localhost:8005 |
+| config-server | http://localhost:8888 | | notification-service | http://localhost:8006 |
+| user-service | http://localhost:8001 | | Kafka UI | http://localhost:8081 |
+| restaurant-service | http://localhost:8002 | | Postgres | localhost:5432 (`foodly`/`foodly`) |
+| order-service | http://localhost:8003 | | Kafka (host listener) | localhost:9094 |
+
+All client traffic goes through the gateway on **8080** under the `/api/**` prefix
+(e.g. `POST /api/auth/login`). The single Postgres container hosts five logical DBs
+(`users`, `restaurants`, `orders`, `payments`, `delivery`) created on first start by
+`docker/postgres/init-multiple-dbs.sh`.
+
+---
+
+### 7.3 Option A — full stack via Docker Compose (recommended)
+
+Each service image is built from a pre-compiled jar, so build the jars first, then the images:
 
 ```bash
-# 1. Build all service images
+# 1. Build every module's jar (multi-module reactor)
 mvn clean package -DskipTests
-docker compose build
 
-# 2. Start the full stack (infra + all services)
+# 2. Build the service images and start everything (infra + all 8 services)
+docker compose build
 docker compose up -d
 
-# 3. Tail logs
-docker compose logs -f api-gateway order-service
+# 3. Watch it come up — services boot in dependency order via healthchecks:
+#    discovery → config-server → gateway + domain services
+docker compose ps
+docker compose logs -f config-server api-gateway
 ```
 
-API gateway will be reachable at `http://localhost:8080`.
-Kafka UI at `http://localhost:8081`.
-Eureka dashboard at `http://localhost:8761`.
-
-### Run a single service locally (faster iteration)
+Startup is staged: domain services wait for `config-server` to be **healthy** and Postgres
+to pass its healthcheck, then register with Eureka. Give it ~60–90s, then confirm all
+instances are `UP` at http://localhost:8761.
 
 ```bash
-# Start only the shared infra
-docker compose up -d postgres kafka redis
-
-# Then run the service you're working on from your IDE or:
-mvn -pl user-service spring-boot:run
+# Tear down (keep data)            # Tear down + wipe volumes
+docker compose down                docker compose down -v
 ```
 
-### Run the test suite
+> In containers, services talk to `config-server:8888`, `discovery-server:8761`,
+> `postgres:5432` and `kafka:9092` — wired via env vars in `docker-compose.yml`.
+
+---
+
+### 7.4 Option B — run services on the host (fast iteration)
+
+Start only the infra in Docker, then run the Spring Cloud pieces and the service you're
+working on. Order matters: **discovery → config-server → (gateway) → domain service**.
 
 ```bash
-mvn test                 # unit tests across all modules
-mvn verify               # also runs integration tests via Testcontainers
+# 1. Infra only
+docker compose up -d postgres kafka redis kafka-ui
+
+# 2. Spring Cloud backbone (separate terminals, or -D spring-boot:start)
+mvn -pl discovery-server spring-boot:run     # 8761
+mvn -pl config-server   spring-boot:run      # 8888  (serves config to everyone else)
+
+# 3. The gateway + whichever service you're iterating on
+mvn -pl api-gateway  spring-boot:run         # 8080
+mvn -pl user-service spring-boot:run         # 8001
 ```
+
+On the host, services read Kafka at `localhost:9094` and Postgres/Eureka/Config at their
+`localhost` defaults — no env vars required. Override any of them with the variables in §7.6.
+
+---
+
+### 7.5 End-to-end demo (through the gateway)
+
+This exercises the whole choreography: signup → login → create catalog → place order →
+payment → dispatch → delivered, with notifications fanned out along the way.
+
+```bash
+GW=http://localhost:8080
+
+# --- 1. A restaurant owner signs up and logs in ---
+curl -s -X POST $GW/api/auth/signup -H 'Content-Type: application/json' -d '{
+  "email":"owner@foodly.io","password":"supersecret","fullName":"Olivia Owner","role":"RESTAURANT_OWNER"}'
+OWNER=$(curl -s -X POST $GW/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"owner@foodly.io","password":"supersecret"}' | jq -r .data.accessToken)
+
+# --- 2. Owner creates a restaurant and a menu item ---
+RID=$(curl -s -X POST $GW/api/restaurants -H "Authorization: Bearer $OWNER" -H 'Content-Type: application/json' \
+  -d '{"name":"Pasta Palace","cuisine":"Italian","city":"Bengaluru","address":"MG Road"}' | jq -r .data.id)
+MID=$(curl -s -X POST $GW/api/restaurants/$RID/menu -H "Authorization: Bearer $OWNER" -H 'Content-Type: application/json' \
+  -d '{"name":"Margherita","category":"Pizza","price":9.50,"available":true}' | jq -r .data.id)
+
+# --- 3. A customer signs up, logs in, and places an order ---
+curl -s -X POST $GW/api/auth/signup -H 'Content-Type: application/json' -d '{
+  "email":"cara@foodly.io","password":"supersecret","fullName":"Cara Customer"}'
+CUST=$(curl -s -X POST $GW/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"cara@foodly.io","password":"supersecret"}' | jq -r .data.accessToken)
+OID=$(curl -s -X POST $GW/api/orders -H "Authorization: Bearer $CUST" -H 'Content-Type: application/json' \
+  -d "{\"restaurantId\":\"$RID\",\"currency\":\"USD\",\"items\":[{\"menuItemId\":\"$MID\",\"name\":\"Margherita\",\"quantity\":2,\"unitPrice\":9.50}]}" \
+  | jq -r .data.id)
+
+# --- 4. Within a moment payment + dispatch happen via Kafka. Check the order status: ---
+curl -s $GW/api/orders/$OID -H "Authorization: Bearer $CUST" | jq '.data.status'   # CONFIRMED → OUT_FOR_DELIVERY
+curl -s $GW/api/payments/order/$OID -H "Authorization: Bearer $CUST" | jq '.data.status'  # COMPLETED
+
+# --- 5. A delivery agent completes the trip (emits order.delivered) ---
+curl -s -X POST $GW/api/auth/signup -H 'Content-Type: application/json' -d '{
+  "email":"dan@foodly.io","password":"supersecret","fullName":"Dan Driver","role":"DELIVERY_AGENT"}'
+AGENT=$(curl -s -X POST $GW/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"dan@foodly.io","password":"supersecret"}' | jq -r .data.accessToken)
+curl -s -X POST "$GW/api/delivery/order/$OID/complete?rating=5" -H "Authorization: Bearer $AGENT" | jq '.data.status'
+
+curl -s $GW/api/orders/$OID -H "Authorization: Bearer $CUST" | jq '.data.status'   # DELIVERED
+curl -s $GW/api/notifications -H "Authorization: Bearer $CUST" | jq '.data[].message'
+```
+
+You can also watch the events flow in **Kafka UI** (http://localhost:8081): topics
+`order.placed`, `payment.completed`, `order.dispatched`, `order.delivered`.
+
+---
+
+### 7.6 Configuration & environment variables
+
+Config is centralized in `config-server` (`config-server/src/main/resources/config/*.yml`),
+served to each service at boot. Common overrides (defaults shown):
+
+| Variable | Default (host) | Purpose |
+|----------|----------------|---------|
+| `CONFIG_SERVER_URI` | `http://localhost:8888` | where a service fetches its config |
+| `EUREKA_DEFAULT_ZONE` | `http://localhost:8761/eureka/` | service registry URL |
+| `POSTGRES_HOST` / `POSTGRES_PORT` | `localhost` / `5432` | database host |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` | `foodly` / `foodly` | database credentials |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9094` | Kafka (host listener; `kafka:9092` in-container) |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | bundled dev RS256 keypair | base64 DER keys — **override in any real deployment** |
+
+### 7.7 Tests
+
+```bash
+mvn test       # unit tests across all modules (Mockito, MockMvc)
+mvn verify     # also runs Testcontainers integration tests (needs Docker running)
+```
+
+### 7.8 Troubleshooting
+
+- **A service can't reach config-server on boot** — start `config-server` first; clients
+  retry 6× (see each `bootstrap.yml`) but will fail-fast if it never comes up.
+- **Kafka connection refused from the host** — use `localhost:9094`, not `9092`. The broker
+  advertises `kafka:9092` to the Docker network and `localhost:9094` to the host.
+- **Flyway / `ddl-auto: validate` mismatch on startup** — the schema is owned by the Flyway
+  `V1__*.sql` migration in each service; if you change an entity, add a new migration rather
+  than editing the validated one.
+- **401 from a service endpoint** — make sure you send `Authorization: Bearer <accessToken>`
+  from a fresh `/api/auth/login` (access tokens expire after 15 min).
 
 ---
 
@@ -233,17 +359,21 @@ foodly/
 
 ## 9. Build & Submission Roadmap
 
-| Phase | Focus                                            | Deliverable                              |
-|-------|--------------------------------------------------|------------------------------------------|
-| 1     | Scaffolding, docker-compose, common-lib          | Empty services that boot                 |
-| 2     | `user-service` (JWT, signup, login)              | Working auth + tests                     |
-| 3     | `restaurant-service` (catalog, search)           | CRUD + paged search                      |
-| 4     | `order-service` (cart, order)                    | Order placement & lifecycle              |
-| 5     | `payment-service` + webhook + reconciliation     | End-to-end happy path                    |
-| 6     | `delivery-service` + `notification-service`      | Full event-driven flow                   |
-| 7     | Spring Cloud wiring (gateway, eureka, config)    | Single ingress, dynamic discovery        |
-| 8     | Dockerization                                    | `docker compose up` runs the whole stack |
-| 9     | Final docs, slides, screencast for submission    | Submission package + GitHub link         |
+| Phase | Focus                                            | Deliverable                              | Status |
+|-------|--------------------------------------------------|------------------------------------------|--------|
+| 1     | Scaffolding, docker-compose, common-lib          | Empty services that boot                 | ✅ done |
+| 2     | `user-service` (JWT, signup, login)              | Working auth + tests                     | ✅ done |
+| 3     | `restaurant-service` (catalog, search)           | CRUD + paged search                      | ✅ done |
+| 4     | `order-service` (cart, order)                    | Order placement & lifecycle              | ✅ done |
+| 5     | `payment-service` + reconciliation               | End-to-end happy path                    | ✅ done |
+| 6     | `delivery-service` + `notification-service`      | Full event-driven flow                   | ✅ done |
+| 7     | Spring Cloud wiring (gateway, eureka, config)    | Single ingress, dynamic discovery        | ✅ done |
+| 8     | Dockerization                                    | `docker compose up` runs the whole stack | ✅ done |
+| 9     | Final docs, slides, screencast for submission    | Submission package + GitHub link         | ⏳ pending |
+
+> All nine services build from the root reactor and the full stack starts with
+> `docker compose up`. Phase 9 (formal report + screencast) is the remaining
+> submission packaging work.
 
 ---
 
