@@ -66,6 +66,156 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
       DYNAMIC_CONFIG_ENABLED: "true"
 
+  # ---------- Spring Cloud infrastructure ----------
+  discovery-server:
+    build: ./discovery-server
+    image: foodly/discovery-server
+    container_name: foodly-discovery
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  config-server:
+    build: ./config-server
+    image: foodly/config-server
+    container_name: foodly-config
+    environment:
+      EUREKA_DEFAULT_ZONE: http://discovery-server:8761/eureka/
+    ports:
+      - "8888:8888"
+    depends_on:
+      discovery-server:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8888/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api-gateway:
+    build: ./api-gateway
+    image: foodly/api-gateway
+    container_name: foodly-gateway
+    environment:
+      EUREKA_DEFAULT_ZONE: http://discovery-server:8761/eureka/
+      CONFIG_SERVER_URI: http://config-server:8888
+    ports:
+      - "8080:8080"
+    depends_on:
+      config-server:
+        condition: service_healthy
+
+  # ---------- Domain services ----------
+  user-service:
+    build: ./user-service
+    image: foodly/user-service
+    container_name: foodly-user
+    environment:
+      EUREKA_DEFAULT_ZONE: http://discovery-server:8761/eureka/
+      CONFIG_SERVER_URI: http://config-server:8888
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8001:8001"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  restaurant-service:
+    build: ./restaurant-service
+    image: foodly/restaurant-service
+    container_name: foodly-restaurant
+    environment:
+      EUREKA_DEFAULT_ZONE: http://discovery-server:8761/eureka/
+      CONFIG_SERVER_URI: http://config-server:8888
+      POSTGRES_HOST: postgres
+    ports:
+      - "8002:8002"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  order-service:
+    build: ./order-service
+    image: foodly/order-service
+    container_name: foodly-order
+    environment:
+      EUREKA_DEFAULT_ZONE: http://discovery-server:8761/eureka/
+      CONFIG_SERVER_URI: http://config-server:8888
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8003:8003"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  payment-service:
+    build: ./payment-service
+    image: foodly/payment-service
+    container_name: foodly-payment
+    environment:
+      EUREKA_DEFAULT_ZONE: http://discovery-server:8761/eureka/
+      CONFIG_SERVER_URI: http://config-server:8888
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8004:8004"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  delivery-service:
+    build: ./delivery-service
+    image: foodly/delivery-service
+    container_name: foodly-delivery
+    environment:
+      EUREKA_DEFAULT_ZONE: http://discovery-server:8761/eureka/
+      CONFIG_SERVER_URI: http://config-server:8888
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8005:8005"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  notification-service:
+    build: ./notification-service
+    image: foodly/notification-service
+    container_name: foodly-notification
+    environment:
+      EUREKA_DEFAULT_ZONE: http://discovery-server:8761/eureka/
+      CONFIG_SERVER_URI: http://config-server:8888
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8006:8006"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
 volumes:
   postgres-data:
   kafka-data:
