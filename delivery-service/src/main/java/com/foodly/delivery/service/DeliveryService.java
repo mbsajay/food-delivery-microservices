@@ -50,7 +50,7 @@ public class DeliveryService {
                 .build());
 
         events.publish(OrderDispatchedEvent.builder()
-                .aggregateId(orderId.toString())
+                .orderId(orderId.toString())
                 .courierId(courierId)
                 .pickedUpAt(now)
                 .estimatedDeliveryAt(now.plus(ETA))
@@ -71,7 +71,7 @@ public class DeliveryService {
         deliveries.save(delivery);
 
         events.publish(OrderDeliveredEvent.builder()
-                .aggregateId(orderId.toString())
+                .orderId(orderId.toString())
                 .courierId(delivery.getCourierId())
                 .deliveredAt(now)
                 .customerRating(rating)
