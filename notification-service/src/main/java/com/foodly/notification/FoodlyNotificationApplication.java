@@ -1,0 +1,12 @@
+package com.foodly.notification;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class FoodlyNotificationApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(FoodlyNotificationApplication.class, args);
+    }
+}
