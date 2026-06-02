@@ -3,12 +3,14 @@ package com.foodly.user.web;
 import com.foodly.common.api.ApiResponse;
 import com.foodly.user.dto.UpdateProfileRequest;
 import com.foodly.user.dto.UserResponse;
+import com.foodly.user.dto.UserSummary;
 import com.foodly.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,6 +39,12 @@ public class UserController {
     public ApiResponse<UserResponse> updateMe(@AuthenticationPrincipal Jwt jwt,
                                               @Valid @RequestBody UpdateProfileRequest request) {
         return ApiResponse.ok(userService.updateProfile(currentUserId(jwt), request));
+    }
+
+    /** Internal lookup used service-to-service (e.g. order-service labelling a customer). */
+    @GetMapping("/{id}/summary")
+    public ApiResponse<UserSummary> summary(@PathVariable UUID id) {
+        return ApiResponse.ok(userService.getSummary(id));
     }
 
     private static UUID currentUserId(Jwt jwt) {

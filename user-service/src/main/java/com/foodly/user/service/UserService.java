@@ -4,6 +4,7 @@ import com.foodly.common.exception.ResourceNotFoundException;
 import com.foodly.user.domain.User;
 import com.foodly.user.dto.UpdateProfileRequest;
 import com.foodly.user.dto.UserResponse;
+import com.foodly.user.dto.UserSummary;
 import com.foodly.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,11 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserResponse getById(UUID id) {
         return UserResponse.from(find(id));
+    }
+
+    @Transactional(readOnly = true)
+    public UserSummary getSummary(UUID id) {
+        return UserSummary.from(find(id));
     }
 
     @Transactional
