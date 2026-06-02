@@ -76,7 +76,7 @@ public class PaymentService {
 
     public static PaymentCompletedEvent completed(Payment payment) {
         return PaymentCompletedEvent.builder()
-                .aggregateId(payment.getId().toString())
+                .paymentId(payment.getId().toString())
                 .orderId(payment.getOrderId().toString())
                 .amount(payment.getAmount())
                 .currency(payment.getCurrency())
@@ -87,7 +87,7 @@ public class PaymentService {
 
     public static PaymentFailedEvent failed(Payment payment) {
         return PaymentFailedEvent.builder()
-                .aggregateId(payment.getId().toString())
+                .paymentId(payment.getId().toString())
                 .orderId(payment.getOrderId().toString())
                 .reasonCode(payment.getReasonCode())
                 .reason(payment.getReason())
