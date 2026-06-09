@@ -68,6 +68,9 @@ coverage/
 .terraform/
 .terraform.lock.hcl
 
+# --- Local toolchain (portable JDK/Maven, not part of the project) ---
+.tools/
+
 # --- Misc ---
 HELP.md
 .flattened-pom.xml
