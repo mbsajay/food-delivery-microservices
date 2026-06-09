@@ -11,7 +11,11 @@ import org.springframework.test.web.reactive.server.WebTestClient;
         "spring.cloud.config.enabled=false",
         "eureka.client.enabled=false",
         "eureka.client.register-with-eureka=false",
-        "eureka.client.fetch-registry=false"
+        "eureka.client.fetch-registry=false",
+        // No Redis/Eureka backing services in the smoke-test context — exclude their
+        // health contributors so /actuator/health reflects only the gateway itself.
+        "management.health.redis.enabled=false",
+        "management.health.discoverycomposite.enabled=false"
 })
 class FoodlyGatewayApplicationTests {
 
