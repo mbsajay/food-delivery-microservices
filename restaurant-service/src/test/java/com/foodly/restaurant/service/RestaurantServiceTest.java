@@ -2,11 +2,13 @@ package com.foodly.restaurant.service;
 
 import com.foodly.common.exception.ResourceNotFoundException;
 import com.foodly.common.exception.UnauthorizedException;
+import com.foodly.restaurant.domain.MenuItem;
 import com.foodly.restaurant.domain.Restaurant;
 import com.foodly.restaurant.dto.RestaurantDtos.CreateRestaurantRequest;
 import com.foodly.restaurant.dto.RestaurantDtos.MenuItemRequest;
 import com.foodly.restaurant.dto.RestaurantDtos.MenuItemResponse;
 import com.foodly.restaurant.dto.RestaurantDtos.RestaurantResponse;
+import com.foodly.restaurant.repository.MenuItemRepository;
 import com.foodly.restaurant.repository.RestaurantRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +32,8 @@ class RestaurantServiceTest {
 
     @Mock
     private RestaurantRepository restaurants;
+    @Mock
+    private MenuItemRepository menuItems;
 
     @InjectMocks
     private RestaurantService restaurantService;
@@ -57,11 +61,16 @@ class RestaurantServiceTest {
         UUID restaurantId = UUID.randomUUID();
         Restaurant restaurant = Restaurant.builder().id(restaurantId).ownerId(ownerId).name("Trattoria").active(true).build();
         when(restaurants.findById(restaurantId)).thenReturn(Optional.of(restaurant));
-        when(restaurants.save(any(Restaurant.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(menuItems.save(any(MenuItem.class))).thenAnswer(inv -> {
+            MenuItem m = inv.getArgument(0);
+            m.setId(UUID.randomUUID());
+            return m;
+        });
 
         MenuItemResponse item = restaurantService.addMenuItem(restaurantId, ownerId,
                 new MenuItemRequest("Pizza", "Wood-fired", "Mains", new BigDecimal("9.50"), true));
 
+        assertThat(item.id()).isNotNull();
         assertThat(item.name()).isEqualTo("Pizza");
         assertThat(item.price()).isEqualByComparingTo("9.50");
         assertThat(restaurant.getMenu()).hasSize(1);

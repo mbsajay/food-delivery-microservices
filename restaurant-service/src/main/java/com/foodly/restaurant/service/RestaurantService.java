@@ -8,6 +8,7 @@ import com.foodly.restaurant.dto.RestaurantDtos.CreateRestaurantRequest;
 import com.foodly.restaurant.dto.RestaurantDtos.MenuItemRequest;
 import com.foodly.restaurant.dto.RestaurantDtos.MenuItemResponse;
 import com.foodly.restaurant.dto.RestaurantDtos.RestaurantResponse;
+import com.foodly.restaurant.repository.MenuItemRepository;
 import com.foodly.restaurant.repository.RestaurantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -25,6 +26,7 @@ import java.util.UUID;
 public class RestaurantService {
 
     private final RestaurantRepository restaurants;
+    private final MenuItemRepository menuItems;
 
     @Transactional
     public RestaurantResponse create(UUID ownerId, CreateRestaurantRequest request) {
@@ -73,7 +75,10 @@ public class RestaurantService {
                 .available(request.available())
                 .build();
         restaurant.addMenuItem(item);
-        restaurants.save(restaurant);
+        // Persist the new item directly: it is transient, so this is an insert that
+        // populates the generated id on this very instance. (Going through the managed
+        // restaurant's cascade would merge a copy and leave `item` without its id.)
+        menuItems.save(item);
         return MenuItemResponse.from(item);
     }
 
