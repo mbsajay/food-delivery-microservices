@@ -1,6 +1,6 @@
 # Foodly — Food Delivery Platform
 
-A microservices-based food delivery backend built as a Master's degree capstone project for **Scaler Neovarsity — Woolf (MS in Computer Science, Backend Specialization)**. It demonstrates end-to-end backend engineering: Spring Boot REST APIs, Spring Data JPA, JWT-based authentication, asynchronous communication via Kafka, payment processing with webhooks and reconciliation, service discovery & gateway routing with Spring Cloud, and full containerization with Docker for local deployment.
+A microservices-based food delivery backend built as a Master's degree capstone project for **Scaler Neovarsity — Woolf (MS in Computer Science, Backend Specialization)**. It demonstrates end-to-end backend engineering: Spring Boot REST APIs, Spring Data JPA, JWT-based authentication, asynchronous communication via Kafka, a simulated payment gateway with a scheduled reconciliation job, service discovery & gateway routing with Spring Cloud, and full containerization with Docker for local deployment.
 
 ---
 
@@ -35,8 +35,8 @@ A microservices-based food delivery backend built as a Master's degree capstone 
        │             │               │              │               │               │
        ▼             ▼               ▼              ▼               ▼               ▼
    ┌───────┐    ┌────────┐      ┌────────┐     ┌────────┐      ┌────────┐      ┌────────┐
-   │users  │    │restau- │      │orders  │     │payments│      │trips   │      │ (none) │
-   │  DB   │    │ rants  │      │  DB    │     │   DB   │      │  DB    │      │        │
+   │users  │    │restau- │      │orders  │     │payments│      │deliv-  │      │ (none) │
+   │  DB   │    │ rants  │      │  DB    │     │   DB   │      │ eries  │      │        │
    └───────┘    └────────┘      └────────┘     └────────┘      └────────┘      └────────┘
 
                             ╔═════════════════════╗
@@ -64,15 +64,15 @@ All components run as Docker containers on the local machine. There is no cloud 
 
 | Service              | Responsibility                                                | DB         | Key Topics                             |
 |----------------------|---------------------------------------------------------------|------------|----------------------------------------|
-| `api-gateway`        | Single ingress, routing, rate limiting, JWT verification edge | —          | Spring Cloud Gateway                   |
+| `api-gateway`        | Single ingress, routing, JWT verification edge                | —          | Spring Cloud Gateway                   |
 | `discovery-server`   | Service registry                                              | —          | Eureka                                 |
 | `config-server`      | Externalized configuration                                    | —          | Spring Cloud Config                    |
 | `user-service`       | Signup, login, profile, JWT issuance                          | Postgres   | JPA, JWT, BCrypt, OAuth2 resource srv  |
-| `restaurant-service` | Restaurants, menu items, search (paging/sorting)              | Postgres   | JPA inheritance, Specifications        |
-| `order-service`      | Cart, order lifecycle, status updates                         | Postgres   | JPA relations, Kafka producer/consumer |
-| `payment-service`    | Payment intents, gateway integration, webhooks, reconciliation| Postgres   | RestTemplate, Webhooks, scheduled jobs |
-| `delivery-service`   | Agent assignment, trip tracking                               | Postgres   | Domain modelling, Kafka consumer       |
-| `notification-service`| Email / SMS notifications                                    | —          | Kafka consumer, 3rd-party APIs         |
+| `restaurant-service` | Restaurants, menu items, search (paging/sorting)              | Postgres   | JPA, derived queries, @PreAuthorize    |
+| `order-service`      | Order placement, lifecycle, status transitions               | Postgres   | JPA relations, Kafka producer/consumer |
+| `payment-service`    | Simulated charge, reconciliation job, audit log               | Postgres   | Kafka consumer, scheduled jobs         |
+| `delivery-service`   | Courier assignment, delivery completion                       | Postgres   | Domain modelling, Kafka consume→produce|
+| `notification-service`| Lifecycle notifications (in-memory store)                    | —          | Kafka fan-out consumers                |
 | `common-lib`         | Shared DTOs, exceptions, event schemas                        | —          | Library packaging                      |
 
 ---
@@ -108,7 +108,7 @@ Customer → Gateway → order-service
                        ├───────────────────────────────┐
                        ▼                                ▼
        order-service consumes payment.completed   delivery-service consumes payment.completed
-              marks order CONFIRMED                    assigns courier, persists trip
+              marks order CONFIRMED                    assigns courier, persists delivery
                                                        produces → kafka: order.dispatched
                        ┌───────────────────────────────┘
                        ▼
@@ -364,7 +364,7 @@ foodly/
 | 1     | Scaffolding, docker-compose, common-lib          | Empty services that boot                 | ✅ done |
 | 2     | `user-service` (JWT, signup, login)              | Working auth + tests                     | ✅ done |
 | 3     | `restaurant-service` (catalog, search)           | CRUD + paged search                      | ✅ done |
-| 4     | `order-service` (cart, order)                    | Order placement & lifecycle              | ✅ done |
+| 4     | `order-service` (order placement)                | Order placement & lifecycle              | ✅ done |
 | 5     | `payment-service` + reconciliation               | End-to-end happy path                    | ✅ done |
 | 6     | `delivery-service` + `notification-service`      | Full event-driven flow                   | ✅ done |
 | 7     | Spring Cloud wiring (gateway, eureka, config)    | Single ingress, dynamic discovery        | ✅ done |
