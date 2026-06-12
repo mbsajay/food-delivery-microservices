@@ -51,11 +51,11 @@ spring:
           filters:
             - StripPrefix=1
 
-        # --- Swagger UI static resources served from user-service ---
-        - id: webjars
+        # --- Swagger UI (managed by user-service's springdoc WebMVC) ---
+        - id: swagger-ui
           uri: lb://user-service
           predicates:
-            - Path=/webjars/**
+            - Path=/swagger-ui/**
 
         # --- OpenAPI doc proxies (no StripPrefix — services expose /v3/api-docs at root) ---
         - id: user-service-docs
